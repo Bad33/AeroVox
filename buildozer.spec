@@ -20,7 +20,7 @@ android.wakelock = True
 
 # Disable debug output for final release performance
 # p4a.local_recipes = 
-# p4a.branch = master
+p4a.branch = develop
 
 [buildozer]
 log_level = 2
