@@ -24,7 +24,6 @@ from kivy.graphics import Color, RoundedRectangle
 if platform == 'android':
     from android.permissions import request_permissions, Permission
     from jnius import autoclass
-    from android.storage import primary_external_storage_path
     
     AudioRecord = autoclass('android.media.AudioRecord')
     AudioFormat = autoclass('android.media.AudioFormat')
@@ -32,8 +31,6 @@ if platform == 'android':
     PowerManager = autoclass('android.os.PowerManager')
     Context = autoclass('android.content.Context')
     PythonActivity = autoclass('org.kivy.android.PythonActivity')
-else:
-    primary_external_storage_path = lambda: os.path.dirname(os.path.abspath(__file__))
 
 # Audio Configuration
 SAMPLE_RATE = 16000
@@ -83,9 +80,10 @@ class SnoreRecorderApp(App):
     log_text = StringProperty("AeroVox Engine Initialized.\n")
 
     def build(self):
-        # Sleek dark mode background
         Window.clearcolor = get_color_from_hex("#0D0D0D") 
-        self.save_dir = os.path.join(primary_external_storage_path(), "SnoreRecords")
+        
+        # FIX: Use safe, private internal app storage instead of public hard drive
+        self.save_dir = os.path.join(self.user_data_dir, "SnoreRecords")
         
         if not os.path.exists(self.save_dir):
             os.makedirs(self.save_dir, exist_ok=True)
@@ -139,20 +137,15 @@ class SnoreRecorderApp(App):
         
         layout.add_widget(btn_layout)
         
-        # Log Viewer (Subtle at the bottom)
+        # Log Viewer
         self.log_label = Label(text=self.log_text, color=get_color_from_hex("#555555"), font_size='12sp', text_size=(Window.width * 0.85, None), halign='center', size_hint=(1, 0.1))
         layout.add_widget(self.log_label)
         
         self.bind(status_text=self.update_ui, current_volume=self.update_ui, log_text=self.update_ui)
         
         if platform == 'android':
-            request_permissions([
-                Permission.RECORD_AUDIO, 
-                Permission.WRITE_EXTERNAL_STORAGE, 
-                Permission.READ_EXTERNAL_STORAGE,
-                Permission.FOREGROUND_SERVICE,
-                Permission.VIBRATE
-            ])
+            # FIX: Only request dangerous runtime permissions. Vibrate/Service are granted via manifest.
+            request_permissions([Permission.RECORD_AUDIO])
             self.acquire_wakelock()
 
         return layout
@@ -161,16 +154,14 @@ class SnoreRecorderApp(App):
         self.nudge_enabled = not self.nudge_enabled
         if self.nudge_enabled:
             self.nudge_btn.text = "ON"
-            self.nudge_btn.set_color("#00E676") # Green
+            self.nudge_btn.set_color("#00E676")
         else:
             self.nudge_btn.text = "OFF"
-            self.nudge_btn.set_color("#333333") # Dark Gray
+            self.nudge_btn.set_color("#333333")
 
-    # --- SLEEK IN-APP AUDIO PLAYER ---
     def open_player_popup(self, instance):
         content = BoxLayout(orientation='vertical', spacing=15, padding=20)
         
-        # Popup Background styling
         with content.canvas.before:
             Color(rgba=get_color_from_hex("#0D0D0D"))
             RoundedRectangle(pos=content.pos, size=content.size, radius=[20])
@@ -231,7 +222,6 @@ class SnoreRecorderApp(App):
             self.current_playback.unload()
             self.current_playback = None
         self.popup.dismiss()
-    # ---------------------------------
 
     def update_threshold(self, instance, value):
         self.threshold = value
@@ -241,11 +231,10 @@ class SnoreRecorderApp(App):
         self.status_label.text = self.status_text
         self.meter_label.text = f"[b]{int(self.current_volume)}[/b]"
         
-        # Change meter color based on volume vs threshold
         if self.current_volume > self.threshold:
-            self.meter_label.color = get_color_from_hex("#FF1744") # Red if snoring
+            self.meter_label.color = get_color_from_hex("#FF1744") 
         else:
-            self.meter_label.color = get_color_from_hex("#00E676") # Green if quiet
+            self.meter_label.color = get_color_from_hex("#00E676") 
             
         self.log_label.text = self.log_text
 
@@ -253,7 +242,7 @@ class SnoreRecorderApp(App):
         timestamp = datetime.now().strftime("%H:%M")
         new_text = self.log_text + f"[{timestamp}] {message}\n"
         lines = new_text.split('\n')
-        if len(lines) > 4: # Keep log short and minimal
+        if len(lines) > 4: 
             lines = lines[-4:]
         self.log_text = '\n'.join(lines)
 
@@ -282,14 +271,14 @@ class SnoreRecorderApp(App):
         if not self.is_monitoring:
             self.is_monitoring = True
             self.toggle_btn.text = "[b]STOP[/b]"
-            self.toggle_btn.set_color("#FF1744") # Red
+            self.toggle_btn.set_color("#FF1744") 
             self.status_text = "LISTENING FOR SNORES"
             self.log("Monitoring active.")
             threading.Thread(target=self.audio_loop, daemon=True).start()
         else:
             self.is_monitoring = False
             self.toggle_btn.text = "[b]START[/b]"
-            self.toggle_btn.set_color("#2979FF") # Blue
+            self.toggle_btn.set_color("#2979FF") 
             self.status_text = "READY TO SLEEP"
             self.current_volume = 0
             self.log("Monitoring paused.")
