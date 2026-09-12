@@ -10,7 +10,7 @@ version = 1.0
 requirements = python3, kivy==2.3.1, android, pyjnius
 
 # Android Specific Configuration
-android.permissions = RECORD_AUDIO, WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE, WAKE_LOCK, FOREGROUND_SERVICE, FOREGROUND_SERVICE_MICROPHONE
+android.permissions = RECORD_AUDIO, WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE, WAKE_LOCK, FOREGROUND_SERVICE, FOREGROUND_SERVICE_MICROPHONE, VIBRATE
 android.api = 33
 android.minapi = 24
 android.archs = arm64-v8a, armeabi-v7a
