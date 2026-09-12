@@ -1,174 +1,22 @@
 import os
 import time
-from datetime import datetime
-from kivy.lang import Builder
-from kivymd.app import MDApp
-from kivy.clock import Clock
-from kivy.utils import platform
-from kivymd.uix.button import MDRaisedButton
-from kivy.properties import StringProperty, NumericProperty, BooleanProperty
-
-# KivyMD UI Layout
-KV = '''
-MDScreen:
-    md_bg_color: 0.1, 0.1, 0.1, 1  # Dark theme for night
-
-    BoxLayout:
-        orientation: 'vertical'
-        padding: "20dp"
-        spacing: "20dp"
-
-        MDLabel:
-            text: app.status_text
-            theme_text_color: "Custom"
-            text_color: app.status_color
-            font_style: "H4"
-            halign: "center"
-            size_hint_y: None
-            height: "60dp"
-
-        MDProgressBar:
-            id: audio_meter
-            value: app.current_volume
-            max: 100
-            size_hint_y: None
-            height: "20dp"
-            color: 0.2, 0.8, 0.2, 1
-
-        BoxLayout:
-            orientation: 'vertical'
-            size_hint_y: None
-            height: "80dp"
-            
-            MDLabel:
-                text: f"Trigger Threshold: {int(app.threshold_volume)}"
-                theme_text_color: "Secondary"
-                halign: "center"
-            
-            MDSlider:
-                min: 5
-                max: 100
-                value: 30
-                on_value: app.threshold_volume = self.value
-                hint: False
-
-        MDRaisedButton:
-            text: "STOP MONITORING" if app.is_monitoring else "START MONITORING"
-            md_bg_color: (0.8, 0.2, 0.2, 1) if app.is_monitoring else (0.2, 0.6, 0.2, 1)
-            pos_hint: {"center_x": .5}
-            size_hint: (0.8, None)
-            height: "60dp"
-            font_style: "H6"
-            on_release: app.toggle_monitoring()
-
-        ScrollView:
-            MDList:
-                id: log_list
-                MDLabel:
-                    text: app.log_text
-                    theme_text_color: "Hint"
-                    size_hint_y: None
-                    height: self.texture_size[1]
-'''
-
-class SnoreRecorderApp(MDApp):
-    status_text = StringProperty("Status: IDLE")
-    status_color = (0.7, 0.7, 0.7, 1)
-    current_volume = NumericProperty(0)
-    threshold_volume = NumericProperty(30)
-    is_monitoring = BooleanProperty(False)
-    log_text = StringProperty("Session Logs:\n")
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.mr = None
-        self.audio_event = None
-        self.is_recording = False
-        self.trigger_time = 0
-        self.silence_time = 0
-        self.record_start_time = 0
-        self.current_filepath = ""
-        
-        # Max amplitude from MediaRecorder is 32767. We map this to 0-100.
-        self.MAX_AMP = 32767.0
-        
-        if platform == 'android':
-            from android.permissions import request_permissions, Permission
-            request_permissions([
-                Permission.RECORD_AUDIO,
-                Permission.WRITE_EXTERNAL_STORAGE,
-                Permission.READ_EXTERNAL_STORAGE,
-                Permission.FOREGROUND_SERVICE
-            ])
-            # Set up private app storage directory
-            from jnius import autoclass
-            PythonActivity = autoclass('org.kivy.android.PythonActivity')
-            self.storage_dir = PythonActivity.mActivity.getExternalFilesDir(None).getAbsolutePath()
-        else:
-            self.storage_dir = os.path.dirname(os.path.abspath(__file__))
-
-    def build(self):
-        self.theme_cls.theme_style = "Dark"
-        self.cleanup_old_files()
-        return Builder.load_string(KV)
-
-    def log(self, msg):
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        self.log_text += f"[{timestamp}] {msg}\n"
-
-    def cleanup_old_files(self):
-        """Deletes M4A files older than 3 days in the app's local storage."""
-        try:
-            now = time.time()
-            deleted_count = 0
-            for filename in os.listdir(self.storage_dir):
-                if filename.endswith(".m4a"):
-                    filepath = os.path.join(self.storage_dir, filename)
-                    if os.stat(filepath).st_mtime < now - (3 * 86400):
-                        os.remove(filepath)
-                        deleted_count += 1
-            if deleted_count > 0:
-                self.log(f"Purged {deleted_count} old file(s).")
-        except Exception as e:
-            self.log(f"Cleanup error: {e}")
-
-    def toggle_monitoring(self):
-        if self.is_monitoring:
-            self.stop_monitoring()
-        else:
-            self.start_monitoring()
-
-    def _get_media_recorder(self, filepath):
-        if platform != 'android':
-            return None
-        from jnius import autoclass
-        MediaRecorder = autoclass('android.media.MediaRecorder')
-        AudioSource = autoclass('android.media.MediaRecorder$AudioSource')
-        OutputFormat = autocHere is the complete project for the "Minimal Snore Recorder". 
-
-To achieve the precise VOX timing (1.5s trigger, 5s release) and continuous ambient analysis, we use Android's native `AudioRecord` class via `pyjnius` to analyze raw PCM data. 
-
-*Note: Pure Python on Android lacks a built-in AAC/M4A encoder for raw PCM streams. The provided code outputs compressed WAV files, which are highly compatible. For production-grade M4A encoding, you would typically compile `ffmpeg-python` into your Buildozer toolchain or write a dedicated Java background service to utilize Android's `MediaCodec`.*
-
-### File 1: `main.py`
-
-```python
-import os
-import time
 import math
 import wave
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from kivy.app import App
 from kivy.clock import Clock
 from kivy.core.window import Window
+from kivy.core.audio import SoundLoader
 from kivy.properties import StringProperty, NumericProperty, BooleanProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.slider import Slider
 from kivy.uix.scrollview import ScrollView
+from kivy.uix.gridlayout import GridLayout
+from kivy.uix.popup import Popup
 from kivy.utils import platform
 
 # Android specific imports
@@ -180,26 +28,25 @@ if platform == 'android':
     AudioRecord = autoclass('android.media.AudioRecord')
     AudioFormat = autoclass('android.media.AudioFormat')
     MediaRecorder = autoclass('android.media.MediaRecorder')
-    # Used to prevent CPU from sleeping
     PowerManager = autoclass('android.os.PowerManager')
     Context = autoclass('android.content.Context')
     PythonActivity = autoclass('org.kivy.android.PythonActivity')
 else:
-    # Mocks for desktop testing
     primary_external_storage_path = lambda: os.path.dirname(os.path.abspath(__file__))
 
 # Audio Configuration
 SAMPLE_RATE = 16000
 BUFFER_SIZE = 2048
-TRIGGER_DURATION = 1.5  # seconds
-RELEASE_DURATION = 5.0  # seconds
-MAX_RECORD_TIME = 120   # 2 minutes
+TRIGGER_DURATION = 1.5
+RELEASE_DURATION = 5.0
+MAX_RECORD_TIME = 120
 
 class SnoreRecorderApp(App):
     status_text = StringProperty("Status: IDLE")
     current_volume = NumericProperty(0)
     threshold = NumericProperty(1500)
     is_monitoring = BooleanProperty(False)
+    nudge_enabled = BooleanProperty(False)
     log_text = StringProperty("App started.\n")
 
     def build(self):
@@ -210,11 +57,12 @@ class SnoreRecorderApp(App):
             os.makedirs(self.save_dir, exist_ok=True)
             
         self.purge_old_files()
+        self.current_playback = None 
 
-        # UI Layout
-        layout = BoxLayout(orientation='vertical', padding=20, spacing=20)
+        # Main UI Layout
+        layout = BoxLayout(orientation='vertical', padding=20, spacing=15)
         
-        self.status_label = Label(text=self.status_text, font_size='24sp', bold=True, size_hint=(1, 0.2))
+        self.status_label = Label(text=self.status_text, font_size='24sp', bold=True, size_hint=(1, 0.15))
         layout.add_widget(self.status_label)
         
         self.meter_label = Label(text="Volume: 0", font_size='18sp', size_hint=(1, 0.1))
@@ -227,20 +75,35 @@ class SnoreRecorderApp(App):
         self.slider.bind(value=self.update_threshold)
         slider_layout.add_widget(self.slider)
         layout.add_widget(slider_layout)
+
+        # Smart Nudge Toggle
+        nudge_layout = BoxLayout(orientation='horizontal', size_hint=(1, 0.15), padding=[0, 10, 0, 10])
+        nudge_layout.add_widget(Label(text="Smart Nudge (Vibrate):", font_size='18sp', halign='left'))
+        self.nudge_btn = Button(text="OFF", background_color=(0.8, 0.2, 0.2, 1), size_hint=(0.4, 1), bold=True)
+        self.nudge_btn.bind(on_press=self.toggle_nudge)
+        nudge_layout.add_widget(self.nudge_btn)
+        layout.add_widget(nudge_layout)
         
-        # Start/Stop Button
+        # Buttons Layout
+        btn_layout = BoxLayout(orientation='horizontal', size_hint=(1, 0.2), spacing=15)
         self.toggle_btn = Button(
-            text="START MONITORING", 
-            background_color=(0.2, 0.8, 0.2, 1),
-            font_size='20sp', 
-            bold=True, 
-            size_hint=(1, 0.2)
+            text="START\nMONITORING", background_color=(0.2, 0.8, 0.2, 1),
+            font_size='18sp', bold=True, halign='center'
         )
         self.toggle_btn.bind(on_press=self.toggle_monitoring)
-        layout.add_widget(self.toggle_btn)
+        btn_layout.add_widget(self.toggle_btn)
+
+        self.listen_btn = Button(
+            text="LISTEN TO\nSNORES", background_color=(0.2, 0.4, 0.8, 1),
+            font_size='18sp', bold=True, halign='center'
+        )
+        self.listen_btn.bind(on_press=self.open_player_popup)
+        btn_layout.add_widget(self.listen_btn)
+        
+        layout.add_widget(btn_layout)
         
         # Log Viewer
-        scroll = ScrollView(size_hint=(1, 0.3))
+        scroll = ScrollView(size_hint=(1, 0.2))
         self.log_label = Label(text=self.log_text, text_size=(Window.width * 0.9, None), halign='left', valign='top')
         self.log_label.bind(texture_size=self.log_label.setter('size'))
         scroll.add_widget(self.log_label)
@@ -253,11 +116,81 @@ class SnoreRecorderApp(App):
                 Permission.RECORD_AUDIO, 
                 Permission.WRITE_EXTERNAL_STORAGE, 
                 Permission.READ_EXTERNAL_STORAGE,
-                Permission.FOREGROUND_SERVICE
+                Permission.FOREGROUND_SERVICE,
+                Permission.VIBRATE
             ])
             self.acquire_wakelock()
 
         return layout
+
+    def toggle_nudge(self, instance):
+        self.nudge_enabled = not self.nudge_enabled
+        if self.nudge_enabled:
+            self.nudge_btn.text = "ON"
+            self.nudge_btn.background_color = (0.2, 0.8, 0.2, 1)
+        else:
+            self.nudge_btn.text = "OFF"
+            self.nudge_btn.background_color = (0.8, 0.2, 0.2, 1)
+
+    # --- IN-APP AUDIO PLAYER LOGIC ---
+    def open_player_popup(self, instance):
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        files = [f for f in os.listdir(self.save_dir) if f.endswith('.wav')]
+        files.sort(reverse=True)
+
+        scroll = ScrollView(size_hint=(1, 0.8))
+        list_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
+        list_layout.bind(minimum_height=list_layout.setter('height'))
+
+        if not files:
+            list_layout.add_widget(Label(text="No snoring recorded yet!", size_hint_y=None, height=50))
+        else:
+            for f in files:
+                row = BoxLayout(orientation='horizontal', size_hint_y=None, height=60, spacing=10)
+                display_name = f.replace('snore_', '').replace('.wav', '')
+                try:
+                    dt = datetime.strptime(display_name, "%Y%m%d_%H%M%S")
+                    friendly_name = dt.strftime("%b %d - %I:%M %p")
+                except:
+                    friendly_name = f
+                
+                row.add_widget(Label(text=friendly_name, size_hint_x=0.7, font_size='16sp'))
+                play_btn = Button(text="PLAY", size_hint_x=0.3, background_color=(0.2, 0.6, 0.2, 1))
+                play_btn.bind(on_press=lambda btn, filename=f: self.play_audio(filename))
+                row.add_widget(play_btn)
+                list_layout.add_widget(row)
+
+        scroll.add_widget(list_layout)
+        content.add_widget(scroll)
+
+        close_btn = Button(text="CLOSE", size_hint=(1, 0.2), background_color=(0.8, 0.2, 0.2, 1))
+        self.popup = Popup(title="Your Recordings", content=content, size_hint=(0.9, 0.8))
+        close_btn.bind(on_press=self.close_popup)
+        content.add_widget(close_btn)
+        
+        self.popup.open()
+
+    def play_audio(self, filename):
+        if self.current_playback:
+            self.current_playback.stop()
+            self.current_playback.unload()
+            
+        filepath = os.path.join(self.save_dir, filename)
+        self.current_playback = SoundLoader.load(filepath)
+        
+        if self.current_playback:
+            self.current_playback.play()
+            self.log(f"Playing: {filename}")
+        else:
+            self.log(f"Error loading {filename}")
+
+    def close_popup(self, instance):
+        if self.current_playback:
+            self.current_playback.stop()
+            self.current_playback.unload()
+            self.current_playback = None
+        self.popup.dismiss()
+    # ---------------------------------
 
     def update_threshold(self, instance, value):
         self.threshold = value
@@ -270,7 +203,6 @@ class SnoreRecorderApp(App):
     def log(self, message):
         timestamp = datetime.now().strftime("%H:%M:%S")
         new_text = self.log_text + f"[{timestamp}] {message}\n"
-        # Keep log short
         lines = new_text.split('\n')
         if len(lines) > 20:
             lines = lines[-20:]
@@ -278,7 +210,7 @@ class SnoreRecorderApp(App):
 
     def purge_old_files(self):
         now = time.time()
-        cutoff = now - (3 * 86400) # 3 days in seconds
+        cutoff = now - (3 * 86400) 
         count = 0
         for f in os.listdir(self.save_dir):
             file_path = os.path.join(self.save_dir, f)
@@ -290,7 +222,6 @@ class SnoreRecorderApp(App):
             self.log(f"Purged {count} old recordings.")
 
     def acquire_wakelock(self):
-        # Keep CPU awake to monitor audio when screen is off
         activity = PythonActivity.mActivity
         pm = activity.getSystemService(Context.POWER_SERVICE)
         self.wakelock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SnoreRecorder::Wakelock")
@@ -303,14 +234,14 @@ class SnoreRecorderApp(App):
     def toggle_monitoring(self, instance):
         if not self.is_monitoring:
             self.is_monitoring = True
-            self.toggle_btn.text = "STOP MONITORING"
+            self.toggle_btn.text = "STOP\nMONITORING"
             self.toggle_btn.background_color = (0.8, 0.2, 0.2, 1)
             self.status_text = "Status: LISTENING"
             self.log("Started monitoring.")
             threading.Thread(target=self.audio_loop, daemon=True).start()
         else:
             self.is_monitoring = False
-            self.toggle_btn.text = "START MONITORING"
+            self.toggle_btn.text = "START\nMONITORING"
             self.toggle_btn.background_color = (0.2, 0.8, 0.2, 1)
             self.status_text = "Status: IDLE"
             self.current_volume = 0
@@ -318,9 +249,8 @@ class SnoreRecorderApp(App):
 
     def audio_loop(self):
         if platform != 'android':
-            return # Mock exit for desktop
+            return
 
-        # Set up Android AudioRecord
         AudioSource = autoclass('android.media.MediaRecorder$AudioSource')
         min_buffer = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         buffer_size = max(min_buffer, BUFFER_SIZE)
@@ -334,7 +264,7 @@ class SnoreRecorderApp(App):
         release_frames = 0
         record_start_time = 0
 
-        frames_per_sec = SAMPLE_RATE / (buffer_size / 2) # 16-bit = 2 bytes per sample
+        frames_per_sec = SAMPLE_RATE / (buffer_size / 2)
         frames_for_trigger = int(TRIGGER_DURATION * frames_per_sec)
         frames_for_release = int(RELEASE_DURATION * frames_per_sec)
 
@@ -344,7 +274,6 @@ class SnoreRecorderApp(App):
                 read_result = recorder.read(short_array, 0, buffer_size)
                 
                 if read_result > 0:
-                    # Calculate RMS
                     sum_squares = sum((int.from_bytes(short_array[i:i+2], byteorder='little', signed=True) ** 2) for i in range(0, read_result, 2))
                     rms = math.sqrt(sum_squares / (read_result / 2))
                     Clock.schedule_once(lambda dt, r=rms: setattr(self, 'current_volume', r))
@@ -360,6 +289,25 @@ class SnoreRecorderApp(App):
                         is_recording = True
                         audio_data = []
                         record_start_time = time.time()
+                        
+                        # --- SMART NUDGE LOGIC ---
+                        if self.nudge_enabled:
+                            try:
+                                vibrator = PythonActivity.mActivity.getSystemService(Context.VIBRATOR_SERVICE)
+                                if vibrator.hasVibrator():
+                                    try:
+                                        # Modern Android Devices
+                                        VibrationEffect = autoclass('android.os.VibrationEffect')
+                                        effect = VibrationEffect.createOneShot(800, VibrationEffect.DEFAULT_AMPLITUDE)
+                                        vibrator.vibrate(effect)
+                                    except:
+                                        # Fallback for older devices
+                                        vibrator.vibrate(800)
+                                Clock.schedule_once(lambda dt: self.log("Nudge sent!"))
+                            except Exception as e:
+                                Clock.schedule_once(lambda dt, err=e: self.log(f"Vibrator err: {err}"))
+                        # -------------------------
+
                         Clock.schedule_once(lambda dt: setattr(self, 'status_text', "Status: RECORDING"))
                         Clock.schedule_once(lambda dt: self.log("Snore detected, recording..."))
 
@@ -394,6 +342,8 @@ class SnoreRecorderApp(App):
 
     def on_stop(self):
         self.is_monitoring = False
+        if self.current_playback:
+            self.current_playback.stop()
         self.release_wakelock()
 
 if __name__ == '__main__':
