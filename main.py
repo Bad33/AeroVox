@@ -17,7 +17,8 @@ from kivy.uix.slider import Slider
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.popup import Popup
-from kivy.utils import platform
+from kivy.utils import platform, get_color_from_hex
+from kivy.graphics import Color, RoundedRectangle
 
 # Android specific imports
 if platform == 'android':
@@ -41,16 +42,49 @@ TRIGGER_DURATION = 1.5
 RELEASE_DURATION = 5.0
 MAX_RECORD_TIME = 120
 
+# --- CUSTOM UI WIDGETS ---
+class RoundedButton(Button):
+    def __init__(self, bg_hex="#2979FF", radius=15, **kwargs):
+        super().__init__(**kwargs)
+        self.background_normal = ''
+        self.background_color = (0, 0, 0, 0)
+        self.markup = True
+        with self.canvas.before:
+            self.bg = Color(rgba=get_color_from_hex(bg_hex))
+            self.rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[radius])
+        self.bind(pos=self.update_graphics, size=self.update_graphics)
+
+    def update_graphics(self, *args):
+        self.rect.pos = self.pos
+        self.rect.size = self.size
+
+    def set_color(self, hex_color):
+        self.bg.rgba = get_color_from_hex(hex_color)
+
+class RoundedCard(BoxLayout):
+    def __init__(self, bg_hex="#1A1A1A", radius=15, **kwargs):
+        super().__init__(**kwargs)
+        with self.canvas.before:
+            Color(rgba=get_color_from_hex(bg_hex))
+            self.rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[radius])
+        self.bind(pos=self.update_graphics, size=self.update_graphics)
+
+    def update_graphics(self, *args):
+        self.rect.pos = self.pos
+        self.rect.size = self.size
+# -------------------------
+
 class SnoreRecorderApp(App):
-    status_text = StringProperty("Status: IDLE")
+    status_text = StringProperty("READY TO SLEEP")
     current_volume = NumericProperty(0)
     threshold = NumericProperty(1500)
     is_monitoring = BooleanProperty(False)
     nudge_enabled = BooleanProperty(False)
-    log_text = StringProperty("App started.\n")
+    log_text = StringProperty("AeroVox Engine Initialized.\n")
 
     def build(self):
-        Window.clearcolor = (0.05, 0.05, 0.05, 1) # Dark theme
+        # Sleek dark mode background
+        Window.clearcolor = get_color_from_hex("#0D0D0D") 
         self.save_dir = os.path.join(primary_external_storage_path(), "SnoreRecords")
         
         if not os.path.exists(self.save_dir):
@@ -60,54 +94,54 @@ class SnoreRecorderApp(App):
         self.current_playback = None 
 
         # Main UI Layout
-        layout = BoxLayout(orientation='vertical', padding=20, spacing=15)
+        layout = BoxLayout(orientation='vertical', padding=30, spacing=20)
         
-        self.status_label = Label(text=self.status_text, font_size='24sp', bold=True, size_hint=(1, 0.15))
+        # Header
+        header = Label(text="[b]AeroVox[/b]", markup=True, font_size='28sp', color=get_color_from_hex("#FFFFFF"), size_hint=(1, 0.1))
+        layout.add_widget(header)
+
+        # Status & Meter
+        self.status_label = Label(text=self.status_text, font_size='16sp', color=get_color_from_hex("#888888"), size_hint=(1, 0.05))
         layout.add_widget(self.status_label)
         
-        self.meter_label = Label(text="Volume: 0", font_size='18sp', size_hint=(1, 0.1))
+        self.meter_label = Label(text="[b]0[/b]", markup=True, font_size='70sp', color=get_color_from_hex("#00E676"), size_hint=(1, 0.2))
         layout.add_widget(self.meter_label)
         
-        # Sensitivity Slider
-        slider_layout = BoxLayout(orientation='vertical', size_hint=(1, 0.2))
-        slider_layout.add_widget(Label(text="Trigger Threshold"))
-        self.slider = Slider(min=0, max=5000, value=self.threshold)
-        self.slider.bind(value=self.update_threshold)
-        slider_layout.add_widget(self.slider)
-        layout.add_widget(slider_layout)
-
-        # Smart Nudge Toggle
-        nudge_layout = BoxLayout(orientation='horizontal', size_hint=(1, 0.15), padding=[0, 10, 0, 10])
-        nudge_layout.add_widget(Label(text="Smart Nudge (Vibrate):", font_size='18sp', halign='left'))
-        self.nudge_btn = Button(text="OFF", background_color=(0.8, 0.2, 0.2, 1), size_hint=(0.4, 1), bold=True)
-        self.nudge_btn.bind(on_press=self.toggle_nudge)
-        nudge_layout.add_widget(self.nudge_btn)
-        layout.add_widget(nudge_layout)
+        # Threshold Slider Card
+        slider_card = RoundedCard(orientation='vertical', padding=20, size_hint=(1, 0.2))
+        self.threshold_label = Label(text=f"Trigger Line: [b]{int(self.threshold)}[/b]", markup=True, color=get_color_from_hex("#CCCCCC"))
+        slider_card.add_widget(self.threshold_label)
         
-        # Buttons Layout
-        btn_layout = BoxLayout(orientation='horizontal', size_hint=(1, 0.2), spacing=15)
-        self.toggle_btn = Button(
-            text="START\nMONITORING", background_color=(0.2, 0.8, 0.2, 1),
-            font_size='18sp', bold=True, halign='center'
-        )
+        self.slider = Slider(min=0, max=5000, value=self.threshold, cursor_size=(40,40), value_track=True, value_track_color=get_color_from_hex("#2979FF"))
+        self.slider.bind(value=self.update_threshold)
+        slider_card.add_widget(self.slider)
+        layout.add_widget(slider_card)
+
+        # Smart Nudge Card
+        nudge_card = RoundedCard(orientation='horizontal', padding=20, size_hint=(1, 0.15))
+        nudge_card.add_widget(Label(text="Smart Nudge\n[size=12sp][color=#888888]Vibrate on snore[/color][/size]", markup=True, halign='left', valign='middle'))
+        
+        self.nudge_btn = RoundedButton(bg_hex="#333333", text="OFF", size_hint=(0.4, 0.8), pos_hint={'center_y': 0.5})
+        self.nudge_btn.bind(on_press=self.toggle_nudge)
+        nudge_card.add_widget(self.nudge_btn)
+        layout.add_widget(nudge_card)
+        
+        # Action Buttons
+        btn_layout = BoxLayout(orientation='horizontal', size_hint=(1, 0.15), spacing=15)
+        
+        self.toggle_btn = RoundedButton(bg_hex="#2979FF", text="[b]START[/b]", font_size='18sp')
         self.toggle_btn.bind(on_press=self.toggle_monitoring)
         btn_layout.add_widget(self.toggle_btn)
 
-        self.listen_btn = Button(
-            text="LISTEN TO\nSNORES", background_color=(0.2, 0.4, 0.8, 1),
-            font_size='18sp', bold=True, halign='center'
-        )
+        self.listen_btn = RoundedButton(bg_hex="#333333", text="[b]RECORDS[/b]", font_size='18sp')
         self.listen_btn.bind(on_press=self.open_player_popup)
         btn_layout.add_widget(self.listen_btn)
         
         layout.add_widget(btn_layout)
         
-        # Log Viewer
-        scroll = ScrollView(size_hint=(1, 0.2))
-        self.log_label = Label(text=self.log_text, text_size=(Window.width * 0.9, None), halign='left', valign='top')
-        self.log_label.bind(texture_size=self.log_label.setter('size'))
-        scroll.add_widget(self.log_label)
-        layout.add_widget(scroll)
+        # Log Viewer (Subtle at the bottom)
+        self.log_label = Label(text=self.log_text, color=get_color_from_hex("#555555"), font_size='12sp', text_size=(Window.width * 0.85, None), halign='center', size_hint=(1, 0.1))
+        layout.add_widget(self.log_label)
         
         self.bind(status_text=self.update_ui, current_volume=self.update_ui, log_text=self.update_ui)
         
@@ -127,35 +161,42 @@ class SnoreRecorderApp(App):
         self.nudge_enabled = not self.nudge_enabled
         if self.nudge_enabled:
             self.nudge_btn.text = "ON"
-            self.nudge_btn.background_color = (0.2, 0.8, 0.2, 1)
+            self.nudge_btn.set_color("#00E676") # Green
         else:
             self.nudge_btn.text = "OFF"
-            self.nudge_btn.background_color = (0.8, 0.2, 0.2, 1)
+            self.nudge_btn.set_color("#333333") # Dark Gray
 
-    # --- IN-APP AUDIO PLAYER LOGIC ---
+    # --- SLEEK IN-APP AUDIO PLAYER ---
     def open_player_popup(self, instance):
-        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        content = BoxLayout(orientation='vertical', spacing=15, padding=20)
+        
+        # Popup Background styling
+        with content.canvas.before:
+            Color(rgba=get_color_from_hex("#0D0D0D"))
+            RoundedRectangle(pos=content.pos, size=content.size, radius=[20])
+            
         files = [f for f in os.listdir(self.save_dir) if f.endswith('.wav')]
         files.sort(reverse=True)
 
-        scroll = ScrollView(size_hint=(1, 0.8))
-        list_layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
+        scroll = ScrollView(size_hint=(1, 0.85))
+        list_layout = GridLayout(cols=1, spacing=15, size_hint_y=None)
         list_layout.bind(minimum_height=list_layout.setter('height'))
 
         if not files:
-            list_layout.add_widget(Label(text="No snoring recorded yet!", size_hint_y=None, height=50))
+            list_layout.add_widget(Label(text="No sleep data recorded yet.", color=get_color_from_hex("#888888"), size_hint_y=None, height=50))
         else:
             for f in files:
-                row = BoxLayout(orientation='horizontal', size_hint_y=None, height=60, spacing=10)
+                row = RoundedCard(bg_hex="#1A1A1A", orientation='horizontal', padding=15, size_hint_y=None, height=80, spacing=10)
+                
                 display_name = f.replace('snore_', '').replace('.wav', '')
                 try:
                     dt = datetime.strptime(display_name, "%Y%m%d_%H%M%S")
-                    friendly_name = dt.strftime("%b %d - %I:%M %p")
+                    friendly_name = dt.strftime("%b %d\n[size=14sp][color=#888888]%I:%M %p[/color][/size]")
                 except:
                     friendly_name = f
                 
-                row.add_widget(Label(text=friendly_name, size_hint_x=0.7, font_size='16sp'))
-                play_btn = Button(text="PLAY", size_hint_x=0.3, background_color=(0.2, 0.6, 0.2, 1))
+                row.add_widget(Label(text=friendly_name, markup=True, halign='left', size_hint_x=0.7))
+                play_btn = RoundedButton(bg_hex="#2979FF", text="PLAY", size_hint_x=0.3, radius=10)
                 play_btn.bind(on_press=lambda btn, filename=f: self.play_audio(filename))
                 row.add_widget(play_btn)
                 list_layout.add_widget(row)
@@ -163,8 +204,10 @@ class SnoreRecorderApp(App):
         scroll.add_widget(list_layout)
         content.add_widget(scroll)
 
-        close_btn = Button(text="CLOSE", size_hint=(1, 0.2), background_color=(0.8, 0.2, 0.2, 1))
-        self.popup = Popup(title="Your Recordings", content=content, size_hint=(0.9, 0.8))
+        close_btn = RoundedButton(bg_hex="#333333", text="CLOSE", size_hint=(1, 0.15))
+        self.popup = Popup(title="Sleep Records", title_color=get_color_from_hex("#FFFFFF"), title_align='center', 
+                           separator_color=get_color_from_hex("#2979FF"), background='', background_color=(0,0,0,0),
+                           content=content, size_hint=(0.9, 0.8))
         close_btn.bind(on_press=self.close_popup)
         content.add_widget(close_btn)
         
@@ -181,8 +224,6 @@ class SnoreRecorderApp(App):
         if self.current_playback:
             self.current_playback.play()
             self.log(f"Playing: {filename}")
-        else:
-            self.log(f"Error loading {filename}")
 
     def close_popup(self, instance):
         if self.current_playback:
@@ -194,18 +235,26 @@ class SnoreRecorderApp(App):
 
     def update_threshold(self, instance, value):
         self.threshold = value
+        self.threshold_label.text = f"Trigger Line: [b]{int(self.threshold)}[/b]"
 
     def update_ui(self, *args):
         self.status_label.text = self.status_text
-        self.meter_label.text = f"Volume: {int(self.current_volume)} / {int(self.threshold)}"
+        self.meter_label.text = f"[b]{int(self.current_volume)}[/b]"
+        
+        # Change meter color based on volume vs threshold
+        if self.current_volume > self.threshold:
+            self.meter_label.color = get_color_from_hex("#FF1744") # Red if snoring
+        else:
+            self.meter_label.color = get_color_from_hex("#00E676") # Green if quiet
+            
         self.log_label.text = self.log_text
 
     def log(self, message):
-        timestamp = datetime.now().strftime("%H:%M:%S")
+        timestamp = datetime.now().strftime("%H:%M")
         new_text = self.log_text + f"[{timestamp}] {message}\n"
         lines = new_text.split('\n')
-        if len(lines) > 20:
-            lines = lines[-20:]
+        if len(lines) > 4: # Keep log short and minimal
+            lines = lines[-4:]
         self.log_text = '\n'.join(lines)
 
     def purge_old_files(self):
@@ -218,8 +267,6 @@ class SnoreRecorderApp(App):
                 if os.path.getmtime(file_path) < cutoff:
                     os.remove(file_path)
                     count += 1
-        if count > 0:
-            self.log(f"Purged {count} old recordings.")
 
     def acquire_wakelock(self):
         activity = PythonActivity.mActivity
@@ -234,18 +281,18 @@ class SnoreRecorderApp(App):
     def toggle_monitoring(self, instance):
         if not self.is_monitoring:
             self.is_monitoring = True
-            self.toggle_btn.text = "STOP\nMONITORING"
-            self.toggle_btn.background_color = (0.8, 0.2, 0.2, 1)
-            self.status_text = "Status: LISTENING"
-            self.log("Started monitoring.")
+            self.toggle_btn.text = "[b]STOP[/b]"
+            self.toggle_btn.set_color("#FF1744") # Red
+            self.status_text = "LISTENING FOR SNORES"
+            self.log("Monitoring active.")
             threading.Thread(target=self.audio_loop, daemon=True).start()
         else:
             self.is_monitoring = False
-            self.toggle_btn.text = "START\nMONITORING"
-            self.toggle_btn.background_color = (0.2, 0.8, 0.2, 1)
-            self.status_text = "Status: IDLE"
+            self.toggle_btn.text = "[b]START[/b]"
+            self.toggle_btn.set_color("#2979FF") # Blue
+            self.status_text = "READY TO SLEEP"
             self.current_volume = 0
-            self.log("Stopped monitoring.")
+            self.log("Monitoring paused.")
 
     def audio_loop(self):
         if platform != 'android':
@@ -290,26 +337,21 @@ class SnoreRecorderApp(App):
                         audio_data = []
                         record_start_time = time.time()
                         
-                        # --- SMART NUDGE LOGIC ---
                         if self.nudge_enabled:
                             try:
                                 vibrator = PythonActivity.mActivity.getSystemService(Context.VIBRATOR_SERVICE)
                                 if vibrator.hasVibrator():
                                     try:
-                                        # Modern Android Devices
                                         VibrationEffect = autoclass('android.os.VibrationEffect')
                                         effect = VibrationEffect.createOneShot(800, VibrationEffect.DEFAULT_AMPLITUDE)
                                         vibrator.vibrate(effect)
                                     except:
-                                        # Fallback for older devices
                                         vibrator.vibrate(800)
-                                Clock.schedule_once(lambda dt: self.log("Nudge sent!"))
-                            except Exception as e:
-                                Clock.schedule_once(lambda dt, err=e: self.log(f"Vibrator err: {err}"))
-                        # -------------------------
+                            except:
+                                pass 
 
-                        Clock.schedule_once(lambda dt: setattr(self, 'status_text', "Status: RECORDING"))
-                        Clock.schedule_once(lambda dt: self.log("Snore detected, recording..."))
+                        Clock.schedule_once(lambda dt: setattr(self, 'status_text', "RECORDING AUDIO"))
+                        Clock.schedule_once(lambda dt: self.log("Snore captured."))
 
                     if is_recording:
                         audio_data.append(short_array)
@@ -320,7 +362,7 @@ class SnoreRecorderApp(App):
                             is_recording = False
                             trigger_frames = 0
                             audio_data = []
-                            Clock.schedule_once(lambda dt: setattr(self, 'status_text', "Status: LISTENING"))
+                            Clock.schedule_once(lambda dt: setattr(self, 'status_text', "LISTENING FOR SNORES"))
 
         finally:
             recorder.stop()
@@ -337,8 +379,7 @@ class SnoreRecorderApp(App):
             for chunk in data_chunks:
                 wf.writeframes(chunk)
                 
-        size_mb = os.path.getsize(filename) / (1024 * 1024)
-        Clock.schedule_once(lambda dt: self.log(f"Saved: snore_{timestamp}.wav ({size_mb:.2f} MB)"))
+        Clock.schedule_once(lambda dt: self.log(f"Saved recording successfully."))
 
     def on_stop(self):
         self.is_monitoring = False
