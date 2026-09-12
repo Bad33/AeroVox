@@ -18,6 +18,14 @@ jobs:
         with:
           python-version: '3.11'
 
+      # --- ADD THIS NEW STEP ---
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      # -------------------------
+
       - name: Install Buildozer and system dependencies
         run: |
           sudo apt-get update
@@ -27,7 +35,6 @@ jobs:
 
       - name: Compile APK
         run: |
-          # Force pure Python for charset_normalizer just in case
           export CHARSET_NORMALIZER_USE_MYPYC=0
           yes | buildozer android debug
 
