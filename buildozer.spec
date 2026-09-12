@@ -7,7 +7,7 @@ source.include_exts = py,png,jpg,kv,atlas
 version = 1.0
 
 # Requirements: Kivy and PyJnius for Android API access
-requirements = python3,kivy==master,android,pyjnius
+requirements = python3, kivy==2.3.1, android, pyjnius
 
 # Android Specific Configuration
 android.permissions = RECORD_AUDIO, WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE, WAKE_LOCK, FOREGROUND_SERVICE, FOREGROUND_SERVICE_MICROPHONE
