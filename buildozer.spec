@@ -1,5 +1,5 @@
 [app]
-title = Minimal Snore Recorder
+title = AeroVox
 package.name = snorerecorder
 package.domain = org.minimal
 source.dir = .
@@ -9,8 +9,11 @@ version = 1.0
 # Requirements: Kivy and PyJnius for Android API access
 requirements = python3, kivy==2.3.1, android, pyjnius
 
+# Declare the persistent microphone recording service
+services = Recorder:services/recorder.py:foreground:sticky:foregroundServiceType=microphone
+
 # Android Specific Configuration
-android.permissions = RECORD_AUDIO, WAKE_LOCK, FOREGROUND_SERVICE, FOREGROUND_SERVICE_MICROPHONE, VIBRATE
+android.permissions = RECORD_AUDIO,WAKE_LOCK,FOREGROUND_SERVICE,FOREGROUND_SERVICE_MICROPHONE,VIBRATE
 android.api = 35
 android.minapi = 24
 android.archs = arm64-v8a, armeabi-v7a

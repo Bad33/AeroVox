@@ -4,7 +4,7 @@ import math
 import wave
 import threading
 from datetime import datetime
-
+import json
 from kivy.app import App
 from kivy.clock import Clock
 from kivy.core.window import Window
@@ -146,7 +146,7 @@ class SnoreRecorderApp(App):
         if platform == 'android':
             # FIX: Only request dangerous runtime permissions. Vibrate/Service are granted via manifest.
             request_permissions([Permission.RECORD_AUDIO])
-            self.acquire_wakelock()
+           
 
         return layout
 
@@ -267,21 +267,65 @@ class SnoreRecorderApp(App):
         if hasattr(self, 'wakelock') and self.wakelock.isHeld():
             self.wakelock.release()
 
+
     def toggle_monitoring(self, instance):
+        if platform != "android":
+            self.log("Recording requires Android.")
+            return
+
         if not self.is_monitoring:
+            self.start_recorder_service()
+        else:
+            self.stop_recorder_service()
+
+    def start_recorder_service(self):
+        from android.permissions import check_permission, Permission
+
+        if not check_permission(Permission.RECORD_AUDIO):
+            self.log("Grant microphone permission, then tap START.")
+            request_permissions([Permission.RECORD_AUDIO])
+            return
+
+        stop_file = os.path.join(self.save_dir, ".stop_recorder")
+
+        if os.path.exists(stop_file):
+            os.remove(stop_file)
+
+        try:
+            RecorderService = autoclass(
+                "org.minimal.snorerecorder.ServiceRecorder"
+            )
+
+            args = json.dumps({
+                "folder": self.save_dir,
+                "stop_file": stop_file
+            })
+
+            RecorderService.start(PythonActivity.mActivity, args)
+
             self.is_monitoring = True
             self.toggle_btn.text = "[b]STOP[/b]"
-            self.toggle_btn.set_color("#FF1744") 
-            self.status_text = "LISTENING FOR SNORES"
-            self.log("Monitoring active.")
-            threading.Thread(target=self.audio_loop, daemon=True).start()
-        else:
-            self.is_monitoring = False
-            self.toggle_btn.text = "[b]START[/b]"
-            self.toggle_btn.set_color("#2979FF") 
-            self.status_text = "READY TO SLEEP"
-            self.current_volume = 0
-            self.log("Monitoring paused.")
+            self.toggle_btn.set_color("#FF1744")
+            self.status_text = "OVERNIGHT RECORDING ACTIVE"
+            self.log("Recorder service requested.")
+
+        except Exception as exc:
+            self.log(f"Service error: {exc}")
+
+    def stop_recorder_service(self):
+        stop_file = os.path.join(self.save_dir, ".stop_recorder")
+
+        # The service checks this file and exits gracefully.
+        with open(stop_file, "w") as f:
+            f.write("stop")
+
+        self.is_monitoring = False
+        self.toggle_btn.text = "[b]START[/b]"
+        self.toggle_btn.set_color("#2979FF")
+        self.status_text = "READY TO SLEEP"
+        self.current_volume = 0
+        self.log("Stop requested. Saving remaining audio.")
+
 
     def audio_loop(self):
         if platform != 'android':
@@ -371,9 +415,10 @@ class SnoreRecorderApp(App):
         Clock.schedule_once(lambda dt: self.log(f"Saved recording successfully."))
 
     def on_stop(self):
-        self.is_monitoring = False
         if self.current_playback:
             self.current_playback.stop()
+            self.current_playback = None
+
         self.release_wakelock()
 
 if __name__ == '__main__':

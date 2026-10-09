@@ -1,0 +1,58 @@
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Buildozer / Android builds
+.buildozer/
+bin/
+.gradle/
+.gradle-cache/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+*.keystore
+*.jks
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Logs and diagnostics
+*.log
+logcat*.txt
+aerovox-log.txt
+volume.txt
+volume.txt.tmp
+recorder_error.log
+
+# Recorded audio and local user data
+SnoreRecords/
+snore_*.wav
+*.pcm
+
+# IDE / Codespaces
+.vscode/
+.idea/
+.devcontainer/.env
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
